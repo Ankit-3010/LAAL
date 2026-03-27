@@ -1,10 +1,10 @@
-# LAAL - RedAmon Recon Engine (Standalone)
+# LAAL - LLM-Augmented Autonomous Attack Lifecycle
 
-A fully functional, 1:1 replica of the RedAmon reconnaissance pipeline, optimized for standalone execution.
+An autonomous AI framework that chains reconnaissance, exploitation, and post-exploitation into a single pipeline.
 
 ## 🚀 How to Run
 
-### Option 1: Docker Mode (Recommended)
+### Docker Mode
 This is the easiest way as it handles all dependencies (Subfinder, Naabu, Httpx, Nuclei) automatically.
 
 ```bash
@@ -12,28 +12,81 @@ This is the easiest way as it handles all dependencies (Subfinder, Naabu, Httpx,
 docker-compose run recon --domain example.com
 ```
 
----
 
-### Option 2: CLI Mode (Native Python)
-Run directly from your host machine. Requires Go binaries (`subfinder`, `naabu`, etc.) to be in your PATH.
+### Orchestrator Communication Flow
 
-```bash
-cd recon
-pip install -r requirements.txt
-python3 main.py --domain example.com
+```mermaid
+sequenceDiagram
+    participant Webapp as Webapp UI
+    participant Orchestrator as Recon Orchestrator
+    participant Recon as Recon Container
+    participant API as Webapp API
+    participant Neo4j as Neo4j
+
+    Webapp->>Orchestrator: POST /recon/{projectId}/start
+    Orchestrator->>Recon: docker run with PROJECT_ID, WEBAPP_API_URL
+    Recon->>API: GET /api/projects/{projectId}
+    API-->>Recon: Project settings (169+ params)
+    Recon->>Recon: Execute scan pipeline
+    Recon->>Neo4j: Update graph with results
+    Orchestrator->>Webapp: SSE log stream
+    Recon-->>Orchestrator: Container exits
+    Orchestrator->>Webapp: Complete event
 ```
 
-**Advanced Usage:**
-- **Specific Subdomains:** `python3 main.py --domain example.com --subdomains testphp,www`
-- **IP Scanning:** `python3 main.py --ip 1.2.3.4,8.8.8.8`
 
----
+## 🏗️ Docker-in-Docker Architecture
+
+The recon module uses a **Docker-in-Docker (DinD)** pattern where the main recon container orchestrates sibling containers for each scanning tool.
+
+### How It Works
+
+The recon container shares the **host's Docker daemon** via a socket mount, meaning all containers are **siblings** managed by the same host Docker daemon.
+
+```mermaid
+flowchart TB
+    subgraph Host["🖥️ HOST MACHINE"]
+        subgraph DockerDaemon["Docker Daemon (dockerd)"]
+            Socket["/var/run/docker.sock"]
+        end
+
+        subgraph Containers["Sibling Containers"]
+            Recon["redamon-recon<br/>Python Orchestrator<br/>📋 Coordinates all scans"]
+            NaabuC["naabu<br/>projectdiscovery/naabu<br/>🔌 Port Scanner"]
+            HttpxC["httpx<br/>projectdiscovery/httpx<br/>🌐 HTTP Prober"]
+            NucleiC["nuclei<br/>projectdiscovery/nuclei<br/>🎯 Vuln Scanner"]
+            KatanaC["katana<br/>projectdiscovery/katana<br/>🕸️ Web Crawler"]
+            GAUC["gau<br/>sxcurity/gau<br/>📚 URL Archives"]
+            PurednsC["puredns<br/>frost19k/puredns<br/>🧹 Wildcard Filter"]
+        end
+
+        Volume["📁 Shared Volume<br/>recon/output/"]
+    end
+
+    Socket -.->|socket mount| Recon
+    Recon -->|docker run| NaabuC
+    Recon -->|docker run| HttpxC
+    Recon -->|docker run| NucleiC
+    Recon -->|docker run| KatanaC
+    Recon -->|docker run| GAUC
+    Recon -->|docker run| PurednsC
+
+    NaabuC --> Volume
+    HttpxC --> Volume
+    NucleiC --> Volume
+    KatanaC --> Volume
+    GAUC --> Volume
+    Recon --> Volume
+```
+
 
 ## 📂 Results
 All findings are saved in the `recon/output/` directory as `recon_default_project.json`. 
 
-## 🛠 Features
-- **Standalone**: No Neo4j or PostgreSQL required.
-- **Full Pipeline**: Subdomain discovery -> Port scan -> HTTP probe -> Resource enum -> Vuln scan.
-- **Live Output**: Real-time terminal feedback for all long-running scans.
-- **MITRE Enrichment**: Vulnerabilities are automatically enriched with CWE/CAPEC data.
+## Tool Integration
+Install and configure the following tools in the recon image:
+*   **Discovery**: `subfinder`, `amass`, `knockpy`, `puredns`.
+*   **Port Scanning**: `naabu`.
+*   **HTTP Probing**: `httpx`, `wappalyzer`.
+*   **Crawling**: `katana`, `hakrawler`, `gau`, `paramspider`.
+*   **Vulnerability Scanning**: `nuclei` (with 9,000+ templates).
