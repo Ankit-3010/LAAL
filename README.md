@@ -1,6 +1,6 @@
 # LAAL - LLM-Augmented Autonomous Attack Lifecycle
 
-An autonomous AI framework that chains reconnaissance, exploitation, and post-exploitation into a single pipeline.
+An AI-powered agentic red team framework that automates offensive security operations, from reconnaissance to exploitation to post-exploitation, with zero human intervention. Fully containerized, it chains six-phase reconnaissance, LangGraph-based autonomous agents, and Neo4j-powered attack surface mapping into an end-to-end offensive security pipeline.
 
 ## 🚀 How to Run
 
